@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from shared.web.logging import RequestIdMiddleware, TimingMiddleware
 
 from main import app
 from settings import Settings, get_settings
@@ -21,6 +22,17 @@ def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["service"] == "validation-service"
+
+
+def test_timing_middleware_registered():
+    """Timing queda justo por dentro de RequestId para heredar su ContextVar.
+
+    En Starlette el último middleware registrado es el más externo: si el orden
+    se invierte, el log de duración emite con `request_id` en `-`.
+    """
+    registered = [entry.cls for entry in app.user_middleware]
+    assert TimingMiddleware in registered
+    assert registered.index(RequestIdMiddleware) < registered.index(TimingMiddleware)
 
 
 def test_validate_valid_pdf_returns_valid():
