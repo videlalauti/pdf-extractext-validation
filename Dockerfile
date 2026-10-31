@@ -1,19 +1,26 @@
-FROM python:3.14-slim-bookworm@sha256:82bc3c539b8813ada9d68c63b40158fa002f7f33de9bf3312a3dfdc0620dff56
+# syntax=docker/dockerfile:1.7
 
-RUN useradd --create-home --user-group appuser
+# Etapa 1: base de build (ABI compatible con el runtime)
+FROM python:3.13-slim-trixie AS build
+COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /usr/local/bin/uv
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
 
+# Etapa 2: dependencias (solo se recalcula si cambian los .txt)
+FROM build AS deps
 WORKDIR /app
+COPY requirements.txt requirements.lock.txt ./
+RUN ln -sf /usr/local/bin/python /usr/bin/python \
+ && uv venv --python /usr/bin/python /opt/venv \
+ && uv pip install --python /opt/venv/bin/python -r requirements.lock.txt
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+# Etapa 3: runtime distroless nonroot, sin shell
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:64e54c4b1200da244d80181d98e86fc01d73c8101f107d5baf472152d8e119a2
+WORKDIR /app
+COPY --from=deps /opt/venv /opt/venv
 COPY main.py routes.py settings.py ./
-
-USER appuser
-
+ENV PATH="/opt/venv/bin:$PATH"
 EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://localhost:' + os.environ.get('PORT', '8000') + '/health')" || exit 1
-
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/usr/bin/python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/health', timeout=4)"]
+ENTRYPOINT ["/opt/venv/bin/python"]
+CMD ["-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
