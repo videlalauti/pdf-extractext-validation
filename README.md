@@ -13,7 +13,7 @@ bytes, así que un PDF que excede el límite se rechaza sin cargarse entero en R
 
 Las reglas de negocio no viven en este repo: se obtienen del paquete compartido
 [`pdf-extractext-shared`](https://github.com/videlalauti/pdf-extractext-shared),
-pinneado por tag (`v1.0.0`) en `requirements.txt`.
+pinneado por tag (`v1.3.0`) en `requirements.txt`.
 
 ## Endpoints
 
@@ -21,15 +21,6 @@ pinneado por tag (`v1.0.0`) en `requirements.txt`.
 | ------ | ----------- | ----------- |
 | GET    | `/health`   | Healthcheck del servicio. Responde `200`. |
 | POST   | `/validate` | Recibe `multipart/form-data` con el campo `file`. |
-
-`POST /validate` responde según el contrato REST:
-
-| Situación | Status | Body |
-| --------- | ------ | ---- |
-| PDF válido | `200` | `{"valid": true, "error": null}` |
-| Extensión distinta de `.pdf` | `415` | `{"detail": "..."}` |
-| Sin magic number `%PDF-` / vacío / inválido | `400` | `{"detail": "..."}` |
-| Excede `MAX_PDF_SIZE_BYTES` | `413` | `{"detail": "..."}` |
 
 ### Ejemplo
 
@@ -39,6 +30,20 @@ curl -i -F "file=@documento.pdf" http://localhost:8000/validate
 
 Cada respuesta incluye el header `X-Request-Id` (el provisto por el cliente si es
 válido, o uno generado) para correlacionar logs entre servicios.
+
+## Contrato
+
+`POST /validate` responde con status codes REST reales:
+
+| Situación | Status | Body |
+| --------- | ------ | ---- |
+| PDF válido | `200` | `{"valid": true, "error": null}` |
+| Extensión distinta de `.pdf` | `415` | `{"detail": "El archivo debe tener extensión .pdf"}` |
+| Excede `MAX_PDF_SIZE_BYTES` | `413` | `{"detail": "El archivo excede el tamaño máximo de ..."}` |
+| Archivo vacío o formato inválido | `400` | `{"detail": "..."}` |
+
+El detalle de cada caso, el cambio rompiente respecto del monolito y la guía
+para adaptar clientes están en [`docs/CONTRATO.md`](docs/CONTRATO.md).
 
 ## Variables de entorno
 
@@ -63,7 +68,7 @@ cp .env.example .env        # opcional: ajustar variables
 uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
 ```
 
-Requiere Python 3.14 (igual que la imagen del `Dockerfile`).
+Requiere Python 3.13 (igual que la imagen del `Dockerfile`).
 
 ### Docker
 
@@ -72,9 +77,16 @@ docker build -t pdf-extractext-validation .
 docker run -p 8000:8000 -e CORS_ORIGINS=http://localhost pdf-extractext-validation
 ```
 
-La imagen arranca con `--port ${PORT:-8000}`, corre como usuario no-root y declara
-un `HEALTHCHECK` contra `/health`. La base está fijada por digest
-(`python:3.14-slim-bookworm@sha256:...`) para paridad dev/prod y builds reproducibles.
+Para escuchar en otro puerto, publicá el mismo puerto y pasá `PORT`:
+
+```bash
+docker run -p 9000:9000 -e PORT=9000 pdf-extractext-validation
+```
+
+La imagen se construye en 3 etapas con `uv` y usa un runtime distroless
+(Python 3.13), corre como usuario no-root (uid `65532`) y declara un
+`HEALTHCHECK` contra `/health`. `entrypoint.py` lee `PORT` del entorno al
+arrancar, porque distroless no tiene shell.
 
 ## Desarrollar
 
