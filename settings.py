@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from shared.domain.constants import MAX_PDF_SIZE_BYTES
 
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    max_pdf_size_bytes: int = MAX_PDF_SIZE_BYTES
+    max_pdf_size_bytes: int = Field(default=MAX_PDF_SIZE_BYTES, gt=0)
     cors_origins: str = ""
     log_level: str = "INFO"
     port: int = 8000

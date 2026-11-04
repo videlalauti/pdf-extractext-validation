@@ -2,6 +2,7 @@ import sys
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from shared.web.logging import RequestIdMiddleware, TimingMiddleware
 
 import entrypoint
@@ -19,6 +20,12 @@ def small_limit():
     app.dependency_overrides[get_settings] = lambda: Settings(max_pdf_size_bytes=1024)
     yield
     app.dependency_overrides.pop(get_settings, None)
+
+
+def test_size_limit_must_be_positive():
+    for invalid in (0, -1):
+        with pytest.raises(ValidationError):
+            Settings(max_pdf_size_bytes=invalid)
 
 
 def test_health_check():
