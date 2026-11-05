@@ -1,11 +1,13 @@
 """Validation service FastAPI application: bootstrap y montaje de componentes."""
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from shared.web.cors import add_cors, parse_origins
 from shared.web.logging import RequestIdMiddleware, TimingMiddleware, setup_logging
 
+from consul_runtime import ConsulRuntime
 from routes import router
 from settings import get_settings
 
@@ -16,7 +18,17 @@ setup_logging(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
 )
 
-app = FastAPI(title="PDF Validation Service", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    registry = ConsulRuntime("validation-service")
+    await registry.start()  # Consul KV + registro Catalog + health check.
+    try:
+        yield
+    finally:
+        await registry.stop()
+
+
+app = FastAPI(title="PDF Validation Service", version="1.0.0", lifespan=lifespan)
 
 # CORS explícito por entorno (sin comodín); RequestId se registra último para
 # quedar como middleware más externo y sellar también las respuestas de preflight.

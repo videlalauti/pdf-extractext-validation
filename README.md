@@ -97,3 +97,19 @@ pytest tests/ -v      # tests
 ```
 
 El CI (`.github/workflows/ci.yml`) corre ambos en cada push y pull request.
+
+
+## Arquitectura de capas (defensa)
+
+- **Presentación:** `routes.py` recibe `POST /validate` y convierte las decisiones en
+  HTTP 200/400/413/415; solo conoce FastAPI, no la implementación de lectura.
+- **Aplicación:** `service.py` orquesta la comprobación de extensión, lectura
+  asíncrona acotada y reglas de validación; usa un `AsyncByteReader` inyectable.
+- **Dominio:** `PdfValidator` y `has_pdf_extension` están en la biblioteca
+  `pdf-extractext-shared`; no dependen de FastAPI.
+- **Infraestructura:** servidor Uvicorn/Docker; este servicio no usa base de datos.
+
+`GET /health` es **liveness** del proceso HTTP; no declara que compruebe Kafka,
+Mongo ni otros servicios, porque Validation no tiene esas dependencias.
+Prueba: `pytest tests/ -v`. Esta rama está aislada; la integración final
+requiere que el integrante asignado la revise e integre con su propio commit.
